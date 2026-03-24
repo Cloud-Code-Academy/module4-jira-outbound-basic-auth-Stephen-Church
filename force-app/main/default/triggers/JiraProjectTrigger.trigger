@@ -1,9 +1,9 @@
-/**
- * Trigger for Jira_Project__c to create projects in Jira
- */
-trigger JiraProjectTrigger on Jira_Project__c(after insert) {
-	// Prevent recursive triggers if needed
-	// Process after insert events
+trigger JiraProjectTrigger on Jira_Project__c(before insert, after insert) {
+	
+	if (Trigger.isBefore && Trigger.isInsert) {
+		JiraTriggerHelper.formatProjectKey(Trigger.new);
+	}
+	
 	if (Trigger.isAfter && Trigger.isInsert) {
 		JiraTriggerHelper.processProjectAfterInsert(Trigger.new);
 	}
