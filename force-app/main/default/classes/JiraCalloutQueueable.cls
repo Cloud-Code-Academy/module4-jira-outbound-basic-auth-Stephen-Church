@@ -1,8 +1,5 @@
-/**
- * Queueable class to make asynchronous callouts to Jira API
- */
 public class JiraCalloutQueueable implements Queueable, Database.AllowsCallouts {
-	// Simple constants instead of enum
+	
 	public static final String TYPE_PROJECT = 'PROJECT';
 	public static final String TYPE_ISSUE = 'ISSUE';
 
@@ -11,79 +8,91 @@ public class JiraCalloutQueueable implements Queueable, Database.AllowsCallouts 
 	private JiraWrapper.ProjectWrapper projectWrapper;
 	private JiraWrapper.IssueWrapper issueWrapper;
 
-	/**
-	 * Constructor for Jira Project callout
-	 * @param recordId The Salesforce Jira Project record Id
-	 * @param projectName The name of the project
-	 * @param projectKey The unique key for the project
-	 * @param description Project description
-	 */
-	public JiraCalloutQueueable(
-		Id recordId,
-		String projectName,
-		String projectKey,
-		String description
-	) {
+	public JiraCalloutQueueable(Id recordId, String projectName, String projectKey, String description) {
 		this.calloutType = TYPE_PROJECT;
 		this.recordId = recordId;
 		this.projectWrapper = new JiraWrapper.ProjectWrapper(projectName, projectKey, description);
 	}
-
-	/**
-	 * Constructor for Jira Issue callout
-	 * @param recordId The Salesforce Jira Issue record Id
-	 * @param projectKey The project key where the issue should be created
-	 * @param summary The issue summary/title
-	 * @param description Issue description
-	 * @param issueType The type of issue
-	 */
-	public JiraCalloutQueueable(
-		Id recordId,
-		String projectKey,
-		String summary,
-		String description,
-		String issueType
-	) {
+	
+	public JiraCalloutQueueable(Id recordId, String projectKey, String summary, String description, String issueType) {
 		this.calloutType = TYPE_ISSUE;
 		this.recordId = recordId;
-		this.issueWrapper = new JiraWrapper.IssueWrapper(
-			projectKey,
-			summary,
-			description,
-			issueType
+		this.issueWrapper = new JiraWrapper.IssueWrapper(projectKey, summary, description, issueType
 		);
 	}
 
-	/**
-	 * Execute the callout based on the callout type
-	 *
-	 * TODO: Implement this method to:
-	 * 1. Check the callout type (TYPE_PROJECT or TYPE_ISSUE)
-	 * 2. Call the appropriate JiraAPIService method
-	 * 3. Update the corresponding Salesforce record with the Jira ID/Key
-	 */
 	public void execute(QueueableContext context) {
-		// Your implementation goes here
+
+		Map<String, String> keyAndIdByValue = new Map<String, String>();
+
+		if (calloutType == TYPE_PROJECT) {
+
+			try {
+				keyAndIdByValue = JiraAPIService.createProject(projectWrapper);
+				updateJiraProject(keyAndIdByValue.get('id'));
+			} catch (JiraAPIService.JiraAPIException je) {
+				logProjectException(je);
+				return;
+			}
+
+		} else if (calloutType == TYPE_ISSUE) {
+
+			try {
+				keyAndIdByValue = JiraAPIService.createIssue(issueWrapper);
+				updateJiraIssue(keyAndIdByValue.get('id'), keyAndIdByValue.get('key'));
+			} catch (JiraAPIService.JiraAPIException je) {
+				logIssueException(je);
+				return;
+			}
+		}
 	}
 
-	/**
-	 * Update the Jira Project record with the Jira project Id
-	 *
-	 * TODO: Implement this method to update the Jira_Project__c record
-	 * with the Jira project ID returned from the API
-	 */
+	// When a user creates a Project, they specify the key they want. Therefore, we only need to update the Project with the Id
 	private void updateJiraProject(String jiraProjectId) {
-		// Your implementation goes here
+
+		Jira_Project__c jp = new Jira_Project__c();
+		jp.Id = recordId;
+		jp.Project_ID__c = jiraProjectId;
+		
+		update jp;
 	}
 
-	/**
-	 * Update the Jira Issue record with the Jira issue key
-	 *
-	 * TODO: Implement this method to update the Jira_Issue__c record
-	 * with the Jira issue key returned from the API
-	 * Don't forget to update the Last_Updated__c field with the current time
-	 */
-	private void updateJiraIssue(String jiraIssueKey) {
-		// Your implementation goes here
+	// When a user creates an Issue, they don't specify the key or id, as both are auto-generated. Therefore, we need to update the Issue with both
+	private void updateJiraIssue(String jiraIssueId, String jiraIssueKey) {
+		
+		Jira_Issue__c ji = new Jira_Issue__c();
+		ji.Id = recordId;
+		ji.Issue_Id__c = jiraIssueId;
+		ji.Issue_Key__c = jiraIssueKey;
+		ji.Last_Updated__c = DateTime.now();
+		
+		update ji;
+	}
+
+	private void logIssueException(JiraAPIService.JiraAPIException je) {
+
+		String errorMessage = 'Exception message: ' + je.getMessage() + '. Additional data points: ';
+		errorMessage += 'recordId = ' + recordId + '. ';
+		errorMessage += 'calloutType = ' + calloutType + '. ';
+		errorMessage += 'issueWrapper.projectKey = ' + issueWrapper?.projectKey + '. ';
+		errorMessage += 'issueWrapper.summary = ' + issueWrapper?.summary + '. ';
+		errorMessage += 'issueWrapper.description = ' + issueWrapper?.description + '. ';
+		errorMessage += 'issueWrapper.issueType = ' + issueWrapper?.issueType + '. ';
+
+		Logger.info(errorMessage);
+		Logger.saveLog();
+	}
+
+	private void logProjectException(JiraAPIService.JiraAPIException je) {
+
+		String errorMessage = 'Exception message: ' + je.getMessage() + '. Additional data points: ';
+		errorMessage += 'recordId = ' + recordId + '. ';
+		errorMessage += 'calloutType = ' + calloutType + '. ';
+		errorMessage += 'projectWrapper.projectName = ' + projectWrapper?.name + '. ';
+		errorMessage += 'projectWrapper.projectKey = ' + projectWrapper?.key + '. ';
+		errorMessage += 'projectWrapper.description = ' + projectWrapper?.description + '. ';
+
+		Logger.info(errorMessage);
+		Logger.saveLog();
 	}
 }
